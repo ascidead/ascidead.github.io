@@ -1,85 +1,96 @@
-const STEAM_ID = '193291847';
-const stratzToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJTdWJqZWN0IjoiZTk0OTgzODQtNWYwNi00ZGM4LTljMjUtNjAwYjNlM2NiNDc2IiwiU3RlYW1JZCI6IjE5MzI5MTg0NyIsIkFQSVVzZXIiOiJ0cnVlIiwibmJmIjoxNzYwNjU3MzU5LCJleHAiOjE3OTIxOTMzNTksImlhdCI6MTc2MDY1NzM1OSwiaXNzIjoiaHR0cHM6Ly9hcGkuc3RyYXR6LmNvbSJ9.nUBXfh53D-Oi-LWXYt9625g6DZZXLkFTCDiuRBnrrU8';
-const CACHE_KEY = 'stratz_ascided';
-const CACHE_TTL = 10 * 60 * 1000; 
+const STEAM_ID = '193291847'; 
+const STRATZ_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJTdWJqZWN0IjoiZTk0OTgzODQtNWYwNi00ZGM4LTljMjUtNjAwYjNlM2NiNDc2IiwiU3RlYW1JZCI6IjE5MzI5MTg0NyIsIkFQSVVzZXIiOiJ0cnVlIiwibmJmIjoxNzYwNjU3MzU5LCJleHAiOjE3OTIxOTMzNTksImlhdCI6MTc2MDY1NzM1OSwiaXNzIjoiaHR0cHM6Ly9hcGkuc3RyYXR6LmNvbSJ9.nUBXfh53D-Oi-LWXYt9625g6DZZXLkFTCDiuRBnrrU8';
+const CACHE_KEY = 'stratz_matches';
+const CACHE_TTL = 5 * 60 * 1000; 
 
 async function fetchMatches() {
+  const cached = localStorage.getItem(CACHE_KEY);
+  if (cached) {
+    const data = JSON.parse(cached);
+    if (Date.now() - data.timestamp < CACHE_TTL) {
+      console.log('Using cached matches');
+      return data.matches;
+    }
+  }
+
   try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if(cached){
-      const data = JSON.parse(cached);
-      if(Date.now() - data.timestamp < CACHE_TTL) return data.matches;
-    }
+    console.log('Fetching from STRATZ API...');
     
-    const res = await fetch(`https://api.stratz.com/api/v1/Player/${steamId}/matches?take=10`, {
-      headers: { 'Authorization': `Bearer ${stratzToken}` }
+    const response = await fetch(`https://api.stratz.com/api/v1/Player/${STEAM_ID}/matches?take=10&include=player`, {
+      headers: { 
+        'Authorization': `Bearer ${STRATZ_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
     });
-    
-    if (!res.ok) {
-      console.warn('STRATZ API returned error:', res.status);
-      return getFallbackMatches(); 
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
     }
+
+    const matches = await response.json();
     
-    const matches = await res.json();
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ matches, timestamp: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ 
+      matches, 
+      timestamp: Date.now() 
+    }));
+    
+    console.log('Matches fetched successfully:', matches.length);
     return matches;
+    
   } catch (error) {
-    console.error('Failed to fetch matches:', error);
-    return getFallbackMatches(); 
+    console.error('STRATZ API error:', error);
+    
+    return getFallbackMatches();
   }
 }
 
-function getFallbackMatches() {
-  return [
-    {
-      heroName: "Shadow Fiend",
-      kills: 12,
-      deaths: 4,
-      assists: 8,
-      win: true,
-      ratingChange: 25,
-      startTime: Date.now() - 2 * 60 * 60 * 1000,
-      laneRole: "mid",
-      isRadiant: true
-    },
-    {
-      heroName: "Invoker",
-      kills: 8,
-      deaths: 6,
-      assists: 12,
-      win: false,
-      ratingChange: -20,
-      startTime: Date.now() - 5 * 60 * 60 * 1000,
-      laneRole: "mid", 
-      isRadiant: true
-    },
-    {
-      heroName: "Puck",
-      kills: 5,
-      deaths: 3,
-      assists: 15,
-      win: true,
-      ratingChange: 22,
-      startTime: Date.now() - 8 * 60 * 60 * 1000,
-      laneRole: "mid",
-      isRadiant: false
-    }
-  ];
+function processMatchData(match) {
+  const playerStats = match.players?.find(p => p.steamId == STEAM_ID) || {};
+  const hero = match.players?.find(p => p.steamId == STEAM_ID)?.hero || {};
+  
+  return {
+    heroName: hero.displayName || 'Unknown Hero',
+    kills: playerStats.kills || 0,
+    deaths: playerStats.death || 0,
+    assists: playerStats.assists || 0,
+    win: playerStats.isVictory || false,
+    ratingChange: match.ratingChange || 0,
+    startTime: match.startDateTime || Date.now(),
+    laneRole: getLaneRole(playerStats.lane || 0),
+    isRadiant: playerStats.isRadiant || true,
+    rating: match.rating || 0,
+    duration: match.duration || 0
+  };
 }
 
-function createMatchCard(match){
-  const heroIcon = `https://cdn.stratz.com/images/dota2/heroes/${match.heroName.replace(/ /g,'')}.png`;
+function getLaneRole(laneId) {
+  const lanes = {
+    1: 'safe',
+    2: 'mid', 
+    3: 'off',
+    4: 'jungle'
+  };
+  return lanes[laneId] || 'mid';
+}
+
+function createMatchCard(matchData) {
+  const heroNameForIcon = matchData.heroName.replace(/ /g, '_').replace(/'/g, '').toLowerCase();
+  const heroIcon = `https://cdn.stratz.com/images/dota2/heroes/${heroNameForIcon}.png`;
+  
   const article = document.createElement('article');
   article.className = 'card match-card';
   article.innerHTML = `
-    <img src="${heroIcon}" class="hero-icon" alt="${match.heroName}">
+    <img src="${heroIcon}" class="hero-icon" alt="${matchData.heroName}" 
+         onerror="this.src='https://cdn.stratz.com/images/dota2/heroes/default.png'">
     <div class="match-info">
-      <h3>${match.heroName}</h3>
-      <p class="kda">${match.kills} / ${match.deaths} / ${match.assists}</p>
+      <h3>${matchData.heroName}</h3>
+      <p class="kda">${matchData.kills} / ${matchData.deaths} / ${matchData.assists}</p>
       <p class="details">
-        ${match.laneRole || 'mid'}, ${match.isRadiant ? 'radiant' : 'dire'}<br>
-        <span class="result ${match.win ? 'win' : 'lose'}">${match.win ? 'победа' : 'поражение'}</span>
-        MMR: ${match.ratingChange > 0 ? '+' : ''}${match.ratingChange}
+        ${matchData.laneRole}, ${matchData.isRadiant ? 'radiant' : 'dire'}<br>
+        <span class="result ${matchData.win ? 'win' : 'lose'}">
+          ${matchData.win ? '🏆 ПОБЕДА' : '💀 ПОРАЖЕНИЕ'}
+        </span><br>
+        MMR: ${matchData.ratingChange > 0 ? '+' : ''}${matchData.ratingChange}
       </p>
     </div>
   `;
@@ -87,31 +98,84 @@ function createMatchCard(match){
 }
 
 async function initMatches() {
-  const container = document.querySelector('#matches .grid');
-  const matches = await fetchMatches();
-  container.innerHTML = '';
-  matches.slice(0,3).forEach(m => container.appendChild(createMatchCard(m)));
+  try {
+    const container = document.querySelector('#matches .grid');
+    
+    container.innerHTML = '<p>Загрузка матчей...</p>';
+    
+    const matches = await fetchMatches();
+    
+    if (!matches || matches.length === 0) {
+      container.innerHTML = '<p>Матчи не найдены</p>';
+      return;
+    }
 
+    container.innerHTML = '';
+    
+    const recentMatches = matches.slice(0, 3).map(processMatchData);
+    recentMatches.forEach(matchData => {
+      container.appendChild(createMatchCard(matchData));
+    });
+
+    updateStats(recentMatches);
+    
+  } catch (error) {
+    console.error('Init matches error:', error);
+    document.querySelector('#matches .grid').innerHTML = 
+      '<p>Ошибка загрузки статистики</p>';
+  }
+}
+
+function updateStats(matches) {
   const now = Date.now();
-  const oneDay = 24*60*60*1000;
+  const oneDay = 24 * 60 * 60 * 1000;
   let dayDelta = 0;
-  matches.forEach(m => { if(now - new Date(m.startTime).getTime() <= oneDay) dayDelta += m.ratingChange; });
-  document.getElementById('mmrDelta').textContent = `Δ MMR за день: ${dayDelta>0?'+':''}${dayDelta}`;
+  
+  matches.forEach(m => {
+    if (now - new Date(m.startTime).getTime() <= oneDay) {
+      dayDelta += m.ratingChange;
+    }
+  });
+  
+  document.getElementById('mmrDelta').textContent = 
+    `Δ MMR за день: ${dayDelta > 0 ? '+' : ''}${dayDelta}`;
 
-  const labels = matches.map(m => new Date(m.startTime).toLocaleDateString());
-  const data = matches.map(m => m.rating || 1200);
+  const allMatches = matches.map(processMatchData);
+  const labels = allMatches.map(m => 
+    new Date(m.startTime).toLocaleDateString('ru-RU')
+  ).reverse();
+  
+  const data = allMatches.map(m => m.rating || 4500).reverse();
+  
   new Chart(document.getElementById('mmrChart'), {
-    type:'line',
-    data:{labels,datasets:[{label:'MMR',data,borderColor:'#fff',backgroundColor:'rgba(255,255,255,0.1)',tension:0.3,pointRadius:3,pointBackgroundColor:'#fff'}]},
-    options:{
-      responsive:true,
-      plugins:{legend:{labels:{color:'#fff'}}},
-      scales:{
-        x:{ticks:{color:'#fff'},grid:{color:'#222'}},
-        y:{ticks:{color:'#fff'},grid:{color:'#222'}}
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'MMR',
+        data,
+        borderColor: '#00d06b',
+        backgroundColor: 'rgba(0, 208, 107, 0.1)',
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: '#00d06b'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#fff' } }
+      },
+      scales: {
+        x: { ticks: { color: '#fff' }, grid: { color: '#222' } },
+        y: { ticks: { color: '#fff' }, grid: { color: '#222' } }
       }
     }
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => { initMatches(); });
+function getFallbackMatches() {
+  return []; 
+}
+
+document.addEventListener('DOMContentLoaded', initMatches);
