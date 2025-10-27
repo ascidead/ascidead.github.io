@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ascidead</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/x-icon" href="/icons/icon.svg"> 
+  <meta name="description" content="ascidead &mdash; your mama's ex">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <video id="bg-video" muted loop autoplay poster="./assets/poster.png">
+    <source src="./assets/1.webm" type="video/webm"> 
+    <source src="./assets/1.mp4" type="video/mp4">   
+  </video>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-inner">
+        <img src="assets/pfp.jpg" alt="ascidead" class="avatar">
+        <h1 class="nick">ascidead</h1>
+        <p class="tagline">Strong enemy &gt; nude woman</p>
+      </div>
+    </section>
+
+    <section id="links" class="links container">
+      <div class="link-group">
+        <h2>Social</h2>
+        <div class="link-cards">
+          <a href="https://t.me/ascidead" class="link-card" target="_blank">
+            <img src="icons/telegram.svg" alt="Telegram"><span>Telegram</span>
+          </a>
+          <a href="https://vk.com/ascidead" class="link-card" target="_blank">
+            <img src="icons/vk.svg" alt="VK"><span>VK</span>
+          </a>
+          <a href="https://discord.com/users/342382808695701524" class="link-card" target="_blank">
+            <img src="icons/discord.svg" alt="Discord"><span>Discord</span>
+          </a>
+          <a href="https://twitch.com/ascidead" class="link-card" target="_blank">
+            <img src="icons/twitch.svg" alt="Shikimori"><span>Twitch</span>
+          </a>
+          <a href="https://shikimori.one/ascidead" class="link-card" target="_blank">
+            <img src="icons/shikimori.svg" alt="Shikimori"><span>Shikimori</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="link-group">
+        <h2>Gaming</h2>
+        <div class="link-cards">
+          <a href="https://steamcommunity.com/id/ascidead" class="link-card" target="_blank">
+            <img src="icons/steam.svg" alt="Steam"><span>Steam (main)</span>
+          </a>
+          <a href="https://stratz.com/player/193291847" class="link-card" target="_blank">
+            <img src="icons/Stratz.png" alt="Dota"><span>STRATZ / Dotabuff</span>
+          </a>
+          <a href="https://steamcommunity.com/id/dvach3vskiy" class="link-card" target="_blank">
+            <img src="icons/steam.svg" alt="Steam2"><span>Steam (second)</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="matches" class="matches container">
+      <h2>Latest matches</h2>
+      <div class="grid"></div>
+      <div id="mmrDelta" class="mmr-delta"></div>
+      <canvas id="mmrChart" height="120"></canvas>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
