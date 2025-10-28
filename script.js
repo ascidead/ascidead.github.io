@@ -16,49 +16,64 @@ async function fetchMatches() {
   try {
     console.log('Fetching from STRATZ API...');
     
-    const response = await fetch(`https://api.stratz.com/api/v1/Player/${STEAM_ID}/matches?take=10&include=player`, {
+    const playerResponse = await fetch(`https://api.stratz.com/api/v1/Player/${STEAM_ID}`, {
       headers: { 
         'Authorization': `Bearer ${STRATZ_TOKEN}`,
         'Content-Type': 'application/json'
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+    if (!playerResponse.ok) {
+      throw new Error(`Player API error: ${playerResponse.status}`);
     }
 
-    const matches = await response.json();
+    const playerData = await playerResponse.json();
+    console.log('Player data received');
+    
+    const matchesResponse = await fetch(`https://api.stratz.com/api/v1/Player/${STEAM_ID}/matches`, {
+      headers: { 
+        'Authorization': `Bearer ${STRATZ_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!matchesResponse.ok) {
+      throw new Error(`Matches API error: ${matchesResponse.status}`);
+    }
+
+    const matches = await matchesResponse.json();
+    console.log('Matches fetched successfully:', matches?.length || 0);
     
     localStorage.setItem(CACHE_KEY, JSON.stringify({ 
       matches, 
       timestamp: Date.now() 
     }));
     
-    console.log('Matches fetched successfully:', matches.length);
     return matches;
     
   } catch (error) {
     console.error('STRATZ API error:', error);
-    
     return getFallbackMatches();
   }
 }
 
 function processMatchData(match) {
+  // STRATZ API возвращает матчи в другом формате
+  // Нужно адаптировать под нашу структуру
   const playerStats = match.players?.find(p => p.steamId == STEAM_ID) || {};
-  const hero = match.players?.find(p => p.steamId == STEAM_ID)?.hero || {};
+  const hero = playerStats.hero || {};
   
   return {
-    heroName: hero.displayName || 'Unknown Hero',
-    kills: playerStats.kills || 0,
-    deaths: playerStats.death || 0,
-    assists: playerStats.assists || 0,
-    win: playerStats.isVictory || false,
-    ratingChange: match.ratingChange || 0,
-    startTime: match.startDateTime || Date.now(),
-    laneRole: getLaneRole(playerStats.lane || 0),
-    isRadiant: playerStats.isRadiant || true,
-    rating: match.rating || 0,
+    heroName: hero.displayName || match.hero?.displayName || 'Unknown Hero',
+    kills: playerStats.kills || match.kills || 0,
+    deaths: playerStats.deaths || match.deaths || 0,
+    assists: playerStats.assists || match.assists || 0,
+    win: playerStats.isVictory !== undefined ? playerStats.isVictory : (match.didRadiantWin === playerStats.isRadiant),
+    ratingChange: match.rankChange || match.ratingChange || 0,
+    startTime: match.startDateTime || match.date || Date.now(),
+    laneRole: getLaneRole(playerStats.lane || match.lane || 0),
+    isRadiant: playerStats.isRadiant !== undefined ? playerStats.isRadiant : true,
+    rating: match.rank || match.rating || 0,
     duration: match.duration || 0
   };
 }
@@ -68,20 +83,21 @@ function getLaneRole(laneId) {
     1: 'safe',
     2: 'mid', 
     3: 'off',
-    4: 'jungle'
+    4: 'jungle',
+    5: 'roam'
   };
   return lanes[laneId] || 'mid';
 }
 
 function createMatchCard(matchData) {
   const heroNameForIcon = matchData.heroName.replace(/ /g, '_').replace(/'/g, '').toLowerCase();
-  const heroIcon = `https://cdn.stratz.com/images/dota2/heroes/${heroNameForIcon}.png`;
+  const heroIcon = `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroNameForIcon}.png`;
   
   const article = document.createElement('article');
   article.className = 'card match-card';
   article.innerHTML = `
     <img src="${heroIcon}" class="hero-icon" alt="${matchData.heroName}" 
-         onerror="this.src='https://cdn.stratz.com/images/dota2/heroes/default.png'">
+         onerror="this.style.display='none'">
     <div class="match-info">
       <h3>${matchData.heroName}</h3>
       <p class="kda">${matchData.kills} / ${matchData.deaths} / ${matchData.assists}</p>
@@ -110,9 +126,14 @@ async function initMatches() {
       return;
     }
 
+    console.log('Raw matches data:', matches);
+    
     container.innerHTML = '';
     
+    // Берем последние 3 матча
     const recentMatches = matches.slice(0, 3).map(processMatchData);
+    console.log('Processed matches:', recentMatches);
+    
     recentMatches.forEach(matchData => {
       container.appendChild(createMatchCard(matchData));
     });
@@ -140,42 +161,46 @@ function updateStats(matches) {
   document.getElementById('mmrDelta').textContent = 
     `Δ MMR за день: ${dayDelta > 0 ? '+' : ''}${dayDelta}`;
 
-  const allMatches = matches.map(processMatchData);
-  const labels = allMatches.map(m => 
-    new Date(m.startTime).toLocaleDateString('ru-RU')
-  ).reverse();
+  // Для графика используем больше данных
+  const allMatches = matches;
+  const labels = allMatches.map(m => {
+    const date = new Date(m.startTime);
+    return `${date.getDate()}.${date.getMonth() + 1} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+  }).reverse();
   
   const data = allMatches.map(m => m.rating || 4500).reverse();
   
-  new Chart(document.getElementById('mmrChart'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'MMR',
-        data,
-        borderColor: '#00d06b',
-        backgroundColor: 'rgba(0, 208, 107, 0.1)',
-        tension: 0.4,
-        pointRadius: 4,
-        pointBackgroundColor: '#00d06b'
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { labels: { color: '#fff' } }
+  if (data.length > 0) {
+    new Chart(document.getElementById('mmrChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'MMR',
+          data,
+          borderColor: '#00d06b',
+          backgroundColor: 'rgba(0, 208, 107, 0.1)',
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#00d06b'
+        }]
       },
-      scales: {
-        x: { ticks: { color: '#fff' }, grid: { color: '#222' } },
-        y: { ticks: { color: '#fff' }, grid: { color: '#222' } }
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: '#fff' } }
+        },
+        scales: {
+          x: { ticks: { color: '#fff' }, grid: { color: '#222' } },
+          y: { ticks: { color: '#fff' }, grid: { color: '#222' } }
+        }
       }
-    }
-  });
+    });
+  }
 }
 
 function getFallbackMatches() {
-  return []; 
+  return [];
 }
 
 document.addEventListener('DOMContentLoaded', initMatches);
