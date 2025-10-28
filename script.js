@@ -58,8 +58,6 @@ async function fetchMatches() {
 }
 
 function processMatchData(match) {
-  // STRATZ API возвращает матчи в другом формате
-  // Нужно адаптировать под нашу структуру
   const playerStats = match.players?.find(p => p.steamId == STEAM_ID) || {};
   const hero = playerStats.hero || {};
   
