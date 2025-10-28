@@ -207,7 +207,7 @@ main {
 
 .card{
   background: rgba(17, 17, 17, 0.8);
-  backdrop-filter: blur(10px); 
+  backdrop-filter: blur(10px);
   border:1px solid rgba(42, 42, 42, 0.6);
   border-radius:12px;
   padding:1.5rem;
